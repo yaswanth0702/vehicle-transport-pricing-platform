@@ -1,1 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Vehicle Transport Cost Estimator</title>
+  <style>
+    body { font-family: Arial; max-width: 900px; margin: 30px auto; padding: 0 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { border: 1px solid #ddd; padding: 16px; border-radius: 10px; }
+    input, select { width: 100%; padding: 10px; }
+    button { padding: 10px 14px; cursor: pointer; }
+    .row { display: flex; justify-content: space-between; padding: 6px 0; }
+    .err { color: crimson; }
+    .ok { color: green; }
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h2>Vehicle Transport Cost Estimator</h2>
 
+  <div class="card">
+    <div class="grid">
+      <div>
+        <label>Pickup ZIP</label>
+        <input id="pickupZip" value="75201" />
+      </div>
+      <div>
+        <label>Dropoff ZIP</label>
+        <input id="dropoffZip" value="90001" />
+      </div>
+
+      <div>
+        <label>Distance (miles)</label>
+        <input id="distanceMiles" type="number" value="1435" />
+      </div>
+
+      <div>
+        <label>Vehicle Type</label>
+        <select id="vehicleType">
+          <option>SEDAN</option>
+          <option>SUV</option>
+          <option>TRUCK</option>
+          <option>MOTORCYCLE</option>
+        </select>
+      </div>
+
+      <div>
+        <label>Transport Type</label>
+        <select id="transportType">
+          <option>OPEN</option>
+          <option>ENCLOSED</option>
+        </select>
+      </div>
+
+      <div style="display:flex; align-items:center; gap:8px; margin-top:22px;">
+        <input id="operable" type="checkbox" checked />
+        <label for="operable">Vehicle is operable</label>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; margin-top:16px;">
+      <button onclick="estimate()">Estimate</button>
+      <button onclick="saveQuote()">Save Quote</button>
+      <button onclick="loadQuotes()">View Saved Quotes</button>
+    </div>
+
+    <div id="msg" style="margin-top:10px;"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3 style="margin-top:0;">Estimate Result</h3>
+    <div id="total"></div>
+    <div id="breakdown"></div>
+  </div>
+
+  <div class="card" style="margin-top:16px;">
+    <h3 style="margin-top:0;">Saved Quotes</h3>
+    <div id="quotes"></div>
+  </div>
+
+  <script>
+    const msg = document.getElementById("msg");
+    const totalBox = document.getElementById("total");
+    const breakdownBox = document.getElementById("breakdown");
+    const quotesBox = document.getElementById("quotes");
+
+    function readForm() {
+      return {
+        pickupZip: document.getElementById("pickupZip").value.trim(),
+        dropoffZip: document.getElementById("dropoffZip").value.trim(),
+        distanceMiles: Number(document.getElementById("distanceMiles").value),
+        vehicleType: document.getElementById("vehicleType").value,
+        transportType: document.getElementById("transportType").value,
+        operable: document.getElementById("operable").checked
+      };
+    }
+
+    function setMsg(text, ok=false) {
+      msg.className = ok ? "ok" : "err";
+      msg.textContent = text;
+    }
+
+    function renderEstimate(data) {
+      totalBox.innerHTML = `<h4>Total: $${data.totalCost}</h4>`;
+      breakdownBox.innerHTML = "";
+      data.breakdown.forEach(x => {
+        const div = document.createElement("div");
+        div.className = "row";
+        div.innerHTML = `<span>${x.label}</span><b>$${x.amount}</b>`;
+        breakdownBox.appendChild(div);
+      });
+    }
+
+    async function estimate() {
+      setMsg("");
+      const body = readForm();
+      const res = await fetch("/api/estimate", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) {
+        setMsg("Estimate failed. Check ZIP format and distance.");
+        return;
+      }
+      renderEstimate(data);
+      setMsg("Estimate generated successfully.", true);
+    }
+
+    async function saveQuote() {
+      setMsg("");
+      const body = readForm();
+      const res = await fetch("/api/save", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(body)
+      });
+
+      const data = await res.json().catch(()=>({}));
+      if (!res.ok) {
+        setMsg("Save failed.");
+        return;
+      }
+      setMsg(`Saved quote! Quote ID: ${data.quoteId}, Total: $${data.totalCost}`, true);
+      loadQuotes();
+    }
+
+    async function loadQuotes() {
+      const res = await fetch("/api/quotes");
+      const data = await res.json().catch(()=>[]);
+      quotesBox.innerHTML = "";
+
+      if (!data.length) {
+        quotesBox.textContent = "No saved quotes yet.";
+        return;
+      }
+
+      data.slice().reverse().forEach(q => {
+        const div = document.createElement("div");
+        div.style.borderBottom = "1px solid #eee";
+        div.style.padding = "8px 0";
+        div.innerHTML = `<b>Quote #${q.id}</b> | ${q.pickupZip} → ${q.dropoffZip} | ${q.distanceMiles} mi | ${q.vehicleType} | ${q.transportType} | ${q.operable ? "Operable" : "Inoperable"} | <b>$${q.totalCost}</b>`;
+        quotesBox.appendChild(div);
+      });
+    }
+
+    loadQuotes();
+  </script>
+</body>
+</html>
